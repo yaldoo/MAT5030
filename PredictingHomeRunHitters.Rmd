@@ -1,0 +1,421 @@
+---
+title: "Best Model For Predicting Home Run Hitters"
+author: "Renee Yaldoo"
+date: "12/9/2017"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+Baseball, a very popular played and intricate sport in the United States. While others love to play baseball out in the park, many watch the Major League Baseball (MLB) games on homescreen televisions. People have always been fascinated when MLB players score Home-Runs (HR). My proposal question of the research project is: What is the best statistical model to determine Home-Run predictors a player will hit in a season? We will take a look at the following: R-Squared, R-Squared Adjusted, AIC, BIC, Press, Cp, and cross-validation (CV) to answer this question.
+
+Hypothesis: I believe RBI's (Runs Batted In) most accurately predicts the number of homeruns a player will hit in a season. 
+
+Six independent parameters have been chosen for statistical analysis.
+
+Dependent variable - Predicting HR (Home-Runs)
+
+Independent variable(s) - AVG (Batting Average), H (Hit), IBB (Intentional Walk), RBI (Runs Batted In), TB (Total Bases), P/PA (Pitches per Plate Apperance).
+
+Data - The data I have chosen is ESPN's MLB Player Batting Stats - 2017. I have only used all the ranked players who are top 144 in the list I was given.
+
+Source(s):
+http://www.espn.com/mlb/stats/batting
+
+http://www.espn.com/mlb/stats/batting/_/type/sabermetric
+
+## Pairwise correlation
+```{r cars}
+# MAT 5030 Final Project Code
+#setwd("Desktop")
+data = read.csv("BaseballData2017.csv")
+data2 = data
+
+data$Rank = NULL
+data$PLAYER = NULL
+data$TEAM = NULL
+
+colnames(data) = c("AVG", "H", "HR", "RBI", "P.PA", "TB",
+                   "IBB", "Adj.TB")
+```
+
+## Histogram of HR
+```{r, }
+hist(data$HR, xlab = "Home runs", 
+     ylab = "Count", 
+     main = "Home run distribution")
+```
+
+## Linear models for individual variables against HR
+```{r, }
+m1 = lm(HR ~ AVG, data = data) #fit regression line for AVG
+summary(m1) #produces summary
+
+m2 = lm(HR ~ H, data = data) #fit regression line for H
+summary(m2) #produces summary
+
+m3 = lm(HR ~ RBI, data = data) #fit regression line for RBI
+summary(m3) #produces summary
+
+m4 = lm(HR ~ P.PA, data = data) #fit regression line for P.PA
+summary(m4) #produces summary
+
+m5 = lm(HR ~ TB, data = data) #fit regression line for TB
+summary(m5) #produces summary
+
+m6 = lm(HR ~ IBB, data = data) #fit regression line for IBB
+summary(m6) #produces summary
+
+
+
+# Look at alll pairwise scaterplots
+pairs(data)
+# Look at all pairwise correlations
+knitr::kable(cor(data))
+```
+
+```{r, remove-tb}
+# First Multiple Linear Regression:
+fit1 = lm(HR ~ AVG + H + RBI + P.PA + TB + IBB, data = data)
+fit1
+
+```
+
+If we really think about the first regression, Total Bases (TB) is heavily correlated with Home-Runs (HR). When doing multiple 
+regression there can be issues with collinearity. So we are going to subtracting TB because the number of bases  gained by a batter through his hits is very correlated with
+ the homeruns. When a player scores a homerun, they have 4 bases which is the total amount of bases a player can get in a Home-Run. 
+ So the formula I have used to take out the TB is the following:
+ Adj.TB = TB - HR * 4
+So instead of using TB, I have used Adjusted TB (Adj.TB).
+
+```{r, model-selection}
+
+# Put in all that new code
+fit = lm(HR ~ . - TB, data = data)
+```
+
+# Model selection part I: Stepwise, R-Square, Adjusted R-Square, AIC, BIC, PRESS, and Cp
+
+## 1.1 Forward Selection
+```{r, }
+null_fit = lm(HR ~ 1, data = data)
+null_fit
+
+step(null_fit, data = data, scope = list(lower = null_fit, upper = fit),
+     direction = "forward")
+```
+
+As we can see from the 1.1 Forward Selection, The best AIC that is given is:
+Step: AIC = 419.92
+lm(formula = HR ~ RBI + Adj.TB + H + P.PA, data = data)
+Taking out AVG and IBB.
+
+## 1.2 Backward Elimination
+```{r, }
+step(fit, data = data, direction = "backward")
+```
+
+As we can see from the 1.2 Backward Elimination, The best AIC that is given is:
+Step: AIC = 419.92
+lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = data)
+Taking out AVG and IBB.
+
+## 1.3 Forward Stepwise Regression
+```{r, }
+step(null_fit, data = data, scope = list(lower = null_fit, upper = fit),
+     direction = "both")
+```
+
+As we can see from the 1.3 Forward Stepwise Regression, The best AIC that is given is:
+Step: AIC = 419.92
+lm(formula = HR ~ RBI + Adj.TB + H + P.PA, data = data)
+Taking out AVG and IBB.
+
+## 1.4 Backwards Stepwise Regression
+```{r, }
+step(fit, data = data, direction = "both")
+```
+
+As we can see from the 1.4 Backwards Stepwise Regression, The best AIC that is given is:
+Step: AIC = 419.92
+lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = data)
+Taking out AVG and IBB once more.
+
+## 2 All Possible Regressions
+```{r, }
+# ============================== object: a fitted model
+# (lm object) MSEfull: MSE for the full model (needed for Cp only)
+CalcCrit = function(object, MSEfull){
+  sumObj = summary(object)
+  R2 = sumObj$r.squared
+  R2ad = sumObj$adj.r.squared
+  SSE = tail(anova(object)$"Sum Sq", 1)
+  n = length(object$fitted.values)
+  p = object$rank
+  AIC = n * log(SSE) - n * log(n) + 2 * p
+  BIC = n * log(SSE) - n * log(n) + log(n) * p
+  pr = resid(object)/(1 - lm.influence(object)$hat)
+  PRESS = sum(pr^2)
+  Cp = SSE/MSEfull - (n - 2 * p)
+  return(c(R2, R2ad, AIC, BIC, PRESS, Cp))
+}
+
+x_all = c("AVG", "H", "RBI", "P.PA", "IBB", "Adj.TB")
+p = length(x_all)
+
+# All combinations of the terms
+all_model = expand.grid(data.frame(rbind(rep(FALSE, p), rep(TRUE,p))))
+all_model = all_model[-1, ]
+
+MSEfull = (sigma(null_fit))^2
+critResults = CalcCrit(null_fit, MSEfull)
+
+# Calculate the criteria for all combinations of models
+for (i in 1:nrow(all_model)){
+  # Using the paste() function we can determine the formula to
+  # use for each combination
+  MyForm = formula(paste("HR ~ ", paste(x_all[all_model[i,] == T],
+                                        collapse = "+")))
+  Fit = lm(MyForm, data = data)
+  critResults = rbind(critResults, CalcCrit(Fit, MSEfull))
+  if ((i %% 200) == 0){
+    # Write on screen every 200th iteration
+    print(paste(i, "models done out of", nrow(Comb)))
+  }
+}
+
+colnames(critResults) = CritNames = c("R2", "R2ad", "AIC", "BIC",
+                                      "PRESS", "Cp")
+combResults = cbind(c(0, apply(all_model, 1, sum)), rbind(F, all_model),
+                    critResults)
+names(combResults)[1] = "p-1"
+
+
+# ------------------------------- Plot criteria for all submodels
+par(mfrow = c(3, 2), mar = c(3.5, 3.5, 1, 1), mgp = c(2, 0.8, 0))
+for (m in 1:length(CritNames)){
+  plot(combResults[, 1], combResults[, CritNames[m]], pch = 20,
+       xlab = "Number of predictors", ylab = CritNames[m])
+  if (m <= 2){
+    # Plot red line R2 and R2adj
+    points(0:ncol(all_model), sapply(split(combResults[, CritNames[m]],
+                                           combResults[, "p-1"]), max),
+           # type = "1", 
+           col = "red", lwd = 2)
+  } else{
+    # Rest of the criteria want minimum
+    points(0:ncol(all_model), sapply(split(combResults[, CritNames[m]],
+                                           combResults[, "p-1"]), min),
+           # type = "1", 
+           col = "red", lwd = 2)
+  }
+}
+
+```
+
+## Model Selection Results
+```{r, model-selection-results}
+#________________________________ The five best models in terms of R2
+Nbest = 5
+Cind = match("R2", names(combResults))
+BestR2 = combResults[order(combResults[, "R2"], 
+                           decreasing = T), ][1:Nbest,c(1:(p + 1), Cind)]
+knitr::kable(BestR2)
+
+#________________________________ The five best models in terms of R2ad
+Nbest = 5
+Cind = match("R2ad", names(combResults))
+BestR2ad = combResults[order(combResults[, "R2ad"], 
+                             decreasing = T), ][1:Nbest,
+                                                c(1:(p + 1), Cind)]
+knitr::kable(BestR2ad)
+
+#________________________________ The five best models in terms of AIC
+Nbest = 5
+Cind = match("AIC", names(combResults))
+BestAIC = combResults[order(combResults[, "AIC"]), ][1:Nbest,
+                                                     c(1:(p + 1), Cind)]
+knitr::kable(BestAIC)
+
+#------------------------------- The five best models in terms of BIC
+Nbest = 5
+Cind = match("BIC", names(combResults))
+BestBIC = combResults[order(combResults[, "BIC"]), ][1:Nbest,
+                                                     c(1:(p + 1), Cind)]
+knitr::kable(BestBIC)
+
+#_______________________________ The five best models in terms of PRESS
+Nbest = 5
+Cind = match("PRESS", names(combResults))
+BestPRESS = combResults[order(combResults[, "PRESS"]), ][1:Nbest,
+                                                     c(1:(p + 1), Cind)]
+knitr::kable(BestPRESS)
+
+
+#________________________________ The five best models in terms of Cp
+Nbest = 5
+Cind = match("Cp", names(combResults))
+BestCp = combResults[order(combResults[, "Cp"]), ][1:Nbest,
+                                                     c(1:(p + 1), Cind)]
+
+knitr::kable(BestCp)
+
+```
+
+## R-Square
+As we can see, the more independent parameters we have for R-Squared, the higher our R-Squared value will be. The highest R-Squared chosen is:
+R2 = 0.8225131
+lm(formula = HR ~ AVG + H + RBI + P.PA + IBB + Adj.TB, data = data)
+
+## R-Square Adjusted
+For R-Squared Adjusted, this value will not necessarily increase as additional terms are introduced into the model. We want a model with the maximum Adjusted R-Square. The highest chosen R-Squared Adjusted is:
+R2ad = 0.8157494
+lm(formula = HR ~ H + RBI + P.PA + IBB + Adj.TB, data = data), where X1 = AVG is FALSE.
+
+## AIC
+As we can see for AIC, we want the model that gives us the lowest AIC. The model that is chosen for the lowest AIC is:
+AIC = 419.9175
+lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = data), where X1 = AVG, X5 = IBB and both are FALSE.
+
+## BIC
+As we can see for BIC, we want the model that gives us the lowest BIC. The model that is chosen for the lowest BIC is:
+BIC = 434.7665
+lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = data), where X1 = AVG, X5 = IBB and both are FALSE.
+
+## PRESS
+As we can see for PRESS, we want the model that gives us the lowest PRESS. The model that is chosen for the lowest PRESS is:
+PRESS = 2691.085
+lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = data), where X1 = AVG, X5 = IBB and both are FALSE.
+
+## Cp
+As we can see for Cp, we want the model that gives us the lowest Cp. The model that is chosen for the lowest Cp is:
+Cp = -109.2270
+lm(formula = HR ~ H + RBI + Adj.TB, data = data), where X1 = AVG, X4 = P.PA, and X5 = IBB resulting these three paramaters to be FALSE.
+Notice how we have a negative Cp value. We must beware of negative values of Cp. This could have been resulted because the MSE for the full model overestimates the true (standard deviation)^2.
+
+## Model Diagnostics
+1. Normality plot 
+2. Residuals vs. Fitted 
+3. Residuals vs. Leverage
+
+```{r, Model-Diagnostics}
+# Simplest diagnostic plot
+# This is the best_model chosen from AIC, BIC, and PRESS
+best_model = lm(HR ~ H + RBI + P.PA + Adj.TB, data = data)
+plot(best_model)
+```
+
+1. For the normality plot most points along the quantile-quantile line meaning that the distribution of residuals is approximately normal. From the normality plot, we can see that 18, and 128 are closse to -3 standard deviation away from the mean. And 9 is near 3 standard deviations from the mean.
+
+2. For the residuals vs. fitted plot there were three points identified as having large residual values, which were 9, 18, and 128. Along the fitted values there appears to be constant variance, which matches our model assumption. It also looks like the relationship between our predictors and the response is linear.
+
+3. In the residuals vs. leverage there are a few points with high leverage but they don't conincide with the points with high residuals, so those points shouldn't have too big an effect on the model fit. All points were within the Cook's Distance of 0.5 so there are no points that are overly influential.
+```{r, Residual Outliers}
+knitr::kable(data2[c(9, 18, 128), ])
+```
+
+9  : Expected to be around 14 (from the x-axis of Residuals vs. Fitted) Over expectation.
+
+18 : Expected to be around 17 (from the x-axis of Residuals vs. Fitted) Under expectation.
+
+128: Expected to be around 36 (from the x-axis of Residuals vs. Fitted) Under expectation.
+
+Why did only 18 show up in the high-leverage points?
+His total number of home runs is lower on the scale of total home runs for all players, so the point has more of an effect on the model fit.
+
+```{r, Leverage}
+best_model.hat <- hatvalues(best_model)
+
+## This heuristic value to identify of possible leverage  hatvalue > #2*(k+1)/n
+# This idx_hat is the index of points
+idx_hat <- which(best_model.hat > (2*(4+1)/nrow(data)))
+idx_hat
+knitr::kable(data2[idx_hat, ])
+```
+
+
+# Model selection part II: Cross validation
+Model 1 : everything except for TB
+
+fit = lm(HR ~ . - TB, data = data)
+
+Model 2 : chosen using stepwise variable selection
+
+best_model = lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = data)
+
+The model selected by stepwise variable selection dropped the two variables Intentional Walk (IBB) and Batting Average (AVG).  
+
+Now we will take a look at cross validation and see which model performs best using cross validation. We used the bootstrap version of cross-validation using 100 iterations on training sets with 75% of the data and predictions made on test sets with the remaining 25%.
+
+Note to self : There is also a version called 5-fold cross validation and that's not what we used. That version splits the data into 5 test sets and you take the data not in that set to train the model on that remaining data.
+
+## Cross Validation 
+```{r, }
+err1 <- double(10)
+# The best_model is model2
+err2 <- double(10)
+err3 <- double(10)
+err4 <- double(10)
+
+# Set a random 
+set.seed(1)
+runif(10)
+
+set.seed(1)
+for(k in 1:100){
+  # Select 75% of the data to train on
+  # idx are the index values of the training set
+  idx <- sample(nrow(data), round(nrow(data)*.75))
+  # Subseting the row indices for training data and test
+  train <- data[idx,  ]
+  test  <- data[-idx,  ]
+  
+  #Fit models on training data
+  model1 <- lm(formula = HR ~ H + RBI + Adj.TB, data = train)
+  # This is the best model from above 
+  model2 <- lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = train)
+  model3 <- lm(formula = HR ~ H + RBI + P.PA + IBB + Adj.TB, data = train)
+  model4 <- lm(formula = HR ~ H + RBI + P.PA + IBB + Adj.TB + AVG, data = train)
+  
+  # Predict the home-run values for the test data
+  pred1 <- predict(model1, newdata = test)
+  pred2 <- predict(model2, newdata = test)
+  pred3 <- predict(model3, newdata = test)
+  pred4 <- predict(model4, newdata = test)
+  
+  # (1/n)*sum((y_i - hat-y_i)^2)
+  # Compute MSE
+  # MSPR
+  err1[k] <- mean((pred1 - test$HR)^2)
+  err2[k] <- mean((pred2 - test$HR)^2)
+  err3[k] <- mean((pred3 - test$HR)^2)
+  err4[k] <- mean((pred4 - test$HR)^2)
+}
+
+mean(err1)
+mean(err2)
+mean(err3)
+mean(err4)
+```
+
+This is the best model from above:
+```{r, }
+model2 <- lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = train)
+summary(model2)
+```
+
+The model chosen as the best model using stepwise variable selection, AIC, BIC, and PRESS also performed best using cross validation. 
+
+Do I keep this? (The P.PA variable had the highest p-value in our previous "best" model. The model where we removed P.PA from the predictors had a higher MSRP than, for example, the model which included IBB.)
+
+```{r, }
+data_scaled <- lapply(data, scale)
+scaled_model <- lm(formula = HR ~ H + RBI + P.PA + Adj.TB, data = data_scaled)
+summary(scaled_model)
+
+# rounding the number to make easier to read and we are standardizing the model
+round(coef(summary(scaled_model)),2)
+```
